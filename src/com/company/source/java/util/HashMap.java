@@ -232,6 +232,8 @@ public class HashMap<K,V> extends AbstractMap<K,V>
 
     /**
      * The default initial capacity - MUST be a power of two.
+     * 默认初始化容量 - 必须是2的幂
+     * 如果我们传入的初始容量不是2的指数次幂，他就会将这个数改成大于该数且最接近这个数的2的指数次幂
      */
     static final int DEFAULT_INITIAL_CAPACITY = 1 << 4; // aka 16
 
@@ -239,11 +241,15 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * The maximum capacity, used if a higher value is implicitly specified
      * by either of the constructors with arguments.
      * MUST be a power of two <= 1<<30.
+     * 最大容量
      */
     static final int MAXIMUM_CAPACITY = 1 << 30;
 
     /**
      * The load factor used when none specified in constructor.
+     * 默认的加载因子仍是0.75
+     * 当加载因子比较大的时候：节省空间资源，耗费时间资源(链表查询比较慢)
+     * 当加载因子比较小的时候：节省时间资源，耗费空间资源
      */
     static final float DEFAULT_LOAD_FACTOR = 0.75f;
 
@@ -254,6 +260,10 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * than 2 and should be at least 8 to mesh with assumptions in
      * tree removal about conversion back to plain bins upon
      * shrinkage.
+     * 树阈值为8, 如果链表长度大于或等于8转成红黑树
+     * 为什么树阈值定为8?
+     * 当put进来一个元素，通过hash算法，然后最后定位到同一个桶（链表）的概率会随着链表的长度的增加而减少，
+     *  当这个链表长度为8的时候，这个概率几乎接近于0，所以我们才会将链表转红黑树的临界值定为8
      */
     static final int TREEIFY_THRESHOLD = 8;
 
@@ -261,6 +271,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * The bin count threshold for untreeifying a (split) bin during a
      * resize operation. Should be less than TREEIFY_THRESHOLD, and at
      * most 6 to mesh with shrinkage detection under removal.
+     * 树退化阈值为6，如果红黑树节点个数小于或等于6转成链表
      */
     static final int UNTREEIFY_THRESHOLD = 6;
 
@@ -269,6 +280,9 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * (Otherwise the table is resized if too many nodes in a bin.)
      * Should be at least 4 * TREEIFY_THRESHOLD to avoid conflicts
      * between resizing and treeification thresholds.
+     * 最小树形化容量阈值：即 当哈希表中的容量 >= 该值时，才允许树形化链表 （即 将链表 转换成红黑树）
+     * 否则，若桶内元素太多时，则直接扩容，而不是树形化
+     * 为了避免进行扩容、树形化选择的冲突，这个值不能小于 4 * TREEIFY_THRESHOLD
      */
     static final int MIN_TREEIFY_CAPACITY = 64;
 
@@ -333,6 +347,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * cheapest possible way to reduce systematic lossage, as well as
      * to incorporate impact of the highest bits that would otherwise
      * never be used in index calculations because of table bounds.
+     * 这么做，只是为了降低hash冲突的几率
      */
     static final int hash(Object key) {
         int h;
@@ -374,6 +389,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
 
     /**
      * Returns a power of two size for the given target capacity.
+     * 该函数的作用是返回一个大于输入参数,且最接近的2的整数次幂的数
      */
     static final int tableSizeFor(int cap) {
         int n = cap - 1;
@@ -384,6 +400,16 @@ public class HashMap<K,V> extends AbstractMap<K,V>
         n |= n >>> 16;
         return (n < 0) ? 1 : (n >= MAXIMUM_CAPACITY) ? MAXIMUM_CAPACITY : n + 1;
     }
+    /*
+        解释下这个算法 ： 需要先了解： 右移 和 位或
+        这里使用的是位运算：假设n的二进01xxx…xxx；
+        先对n右移1位则结果为：001xx…xxx，再进行位或结果为：011xx…xxx；
+        再对n右移2位则结果为：00011…xxx，再进行位或结果为：01111…xxx；
+        此时前面已经有四个1了，再右移4位，然后进行位或可得8个1；
+        同理，有8个1，再右移8位，然后进行位或肯定会让后八位也为1；
+        综上可得，该算法让最高位的1后面的位全变为1。最后再让结果n+1，即得到了2的整数次幂的值了。
+        而最开始：cap-1再赋值给n的目的是：让找到的目标值 >= 原值, 比如cap=16, 如果不减1的话会导致返回32
+     */
 
     /* ---------------- Fields -------------- */
 
@@ -445,15 +471,19 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      *         or the load factor is nonpositive
      */
     public HashMap(int initialCapacity, float loadFactor) {
+        // 1.这里会先判断传来的初始容量是不是小于零的数字。如果是直接抛出异常
         if (initialCapacity < 0)
             throw new IllegalArgumentException("Illegal initial capacity: " +
                                                initialCapacity);
+        // 2.再判断是不是超过了hash定义的最大容量2的30次幂，如果超过了则让其等于最大容量
         if (initialCapacity > MAXIMUM_CAPACITY)
             initialCapacity = MAXIMUM_CAPACITY;
+        // 3.再接着判断传来的加载因子,如果小于零或者不是一个数字直接抛出异常。
         if (loadFactor <= 0 || Float.isNaN(loadFactor))
             throw new IllegalArgumentException("Illegal load factor: " +
                                                loadFactor);
         this.loadFactor = loadFactor;
+        // 4.然后调用了一个tableSizeFor()方法去处理传进来的初始容量
         this.threshold = tableSizeFor(initialCapacity);
     }
 
@@ -621,29 +651,64 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * @param onlyIfAbsent if true, don't change existing value
      * @param evict if false, the table is in creation mode.
      * @return previous value, or null if none
+     *
+     * 为什么n一定要是2的幂次？
+     * (1) 通过位运算 (n-1)&hash 达到取模（hash%n）的目的，加快运算速度;
+     * (2) 更重要的一点是：要保证定位出来的值是在数组的长度之内的，不能超出数组长度，并且减少哈希碰撞，让每个位都可能被取到，例如：
+     * 例如：(16-1) & hash
+     * 二进制的15：  0000 0000 0000 1111
+     * hash(随机)   1101 0111 1011 0000
+     * hash(随机)   1101 0111 1011 1111
+     * 结果         0000 0000 0000 0001 ~ 0000 0000 0000 1111
+     * 即得出的索引下标只能在0~15之间，保证了所有索引都在数组长度的范围内而不会越界
+     * 并且由于2的指数次幂-1都是...1111的形式的，即最后一位是1
+     * 这样，由于hash是随机的，进行与运算后每一位都是能取到的
+     * ========================================================================
+     * 反例：(7-1) & hash
+     * 二进制6： 0000 0000 0000 0110
+     * hash     1011 1001 0101 0000
+     * hash     1001 0001 0000 1111
+     * 结果      0000 0000 0000 0000 ~ 0000 0000 0000 0110
+     * 即得出的索引范围在0~6，虽然不会越界，但最后一位是0
+     * 即现在无论hash为何值，0001，0011，0101这几个值是不可能取到的
+     * 这就加剧了hash碰撞，并且浪费了大量数组空间，显然是我们不想看到的
      */
     final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
                    boolean evict) {
         Node<K,V>[] tab; Node<K,V> p; int n, i;
+        // 1. 如果当前table为空，新建默认大小的table
         if ((tab = table) == null || (n = tab.length) == 0)
             n = (tab = resize()).length;
+        // 2. 获取当前key对应的节点
+        // n-1相当于掩码，因为n是2的次幂，所以n-1二进制最低位有k个1(其中k=log2(n))
+        // (n - 1) & hash是待添加元素应该存放的位置（有冲突的话使用链地址法解决）
+        // (n - 1) & hash 相当于 hash%n（在n时2的幂次的情况下）
+        // 例如 n=4,hash=10 : (n-1)&hash=0011&1010=2, 10%4=2
         if ((p = tab[i = (n - 1) & hash]) == null)
+            // 3. 如果不存在，新建节点
             tab[i] = newNode(hash, key, value, null);
         else {
+            // 4. 存在节点
             Node<K,V> e; K k;
+            // 5. key的hash相同，key的引用相同或者key equals，则覆盖
             if (p.hash == hash &&
                 ((k = p.key) == key || (key != null && key.equals(k))))
                 e = p;
+            // 6. 如果当前节点是一个红黑树树节点，则添加树节点
             else if (p instanceof TreeNode)
                 e = ((TreeNode<K,V>)p).putTreeVal(this, tab, hash, key, value);
+            // 7. 不是红黑树节点，也不是相同节点，则表示为链表结构
             else {
+                // 8. 找到最后那个节点
                 for (int binCount = 0; ; ++binCount) {
                     if ((e = p.next) == null) {
                         p.next = newNode(hash, key, value, null);
+                        // 9. 如果链表长度大于或等于8转成红黑树
                         if (binCount >= TREEIFY_THRESHOLD - 1) // -1 for 1st
                             treeifyBin(tab, hash);
                         break;
                     }
+                    // 10.如果链表中有相同的节点，则覆盖
                     if (e.hash == hash &&
                         ((k = e.key) == key || (key != null && key.equals(k))))
                         break;
@@ -652,13 +717,16 @@ public class HashMap<K,V> extends AbstractMap<K,V>
             }
             if (e != null) { // existing mapping for key
                 V oldValue = e.value;
+                // 是否替换掉value值
                 if (!onlyIfAbsent || oldValue == null)
                     e.value = value;
                 afterNodeAccess(e);
                 return oldValue;
             }
         }
+        // 记录修改次数
         ++modCount;
+        // 是否超过容量，超过需要扩容
         if (++size > threshold)
             resize();
         afterNodeInsertion(evict);
@@ -718,14 +786,24 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                         Node<K,V> next;
                         do {
                             next = e.next;
-                            if ((e.hash & oldCap) == 0) {
+                            /*
+                            假设oldCap=16
+                            hash值：           0010 1111 1010 1110
+                             数组的长度(16)     0000 0000 0000 1000
+
+                             ‘与’运算的结果，只可能有两种值：
+                             0000 0000 0000 0000---------------0
+                             0000 0000 0000 1000---------------16
+                             也就是说当前节点用当前节点的hash值和旧数组的长度（16）做'与'运算的结果只可能是0或16
+                             */
+                            if ((e.hash & oldCap) == 0) {  // 如果是0，则使用低位的指针
                                 if (loTail == null)
                                     loHead = e;
                                 else
                                     loTail.next = e;
                                 loTail = e;
                             }
-                            else {
+                            else {  // 如果是16，则使用高位的指针
                                 if (hiTail == null)
                                     hiHead = e;
                                 else
@@ -734,11 +812,13 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                             }
                         } while ((e = next) != null);
                         if (loTail != null) {
-                            loTail.next = null;
-                            newTab[j] = loHead;
+                            loTail.next = null;  // 把低位的尾部节点的next值为空（先将高位和低位断开）
+                            newTab[j] = loHead;  // 将低位的头部赋给新数组的某个值，也就是将高位的所有节点移动过去
                         }
                         if (hiTail != null) {
-                            hiTail.next = null;
+                            hiTail.next = null;  // 把高位的尾部节点的next值为空
+                            // 再将高位的头部放到新数组的j + oldCap索引处（当前索引+旧数组的长度）
+                            // 比如说现在的索引是3，再加上数组长度16，最后就是将高位放到新数组的索引为19的地方去
                             newTab[j + oldCap] = hiHead;
                         }
                     }
