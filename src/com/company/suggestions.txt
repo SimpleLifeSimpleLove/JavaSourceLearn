@@ -1,0 +1,12 @@
+搭建参考网址：https://www.cnblogs.com/shawnyue-08/p/12590133.html
+使用的idea版本：2017.2.5
+
+JDK源码包建议阅读顺序（主要看com.company.source.java）：
+    lang：instrument，invoke，management，ref 初期不需要看
+    util：jar，logging，prefs，regex，spi，zip 初期不需要看
+    io
+    nio
+    math
+    time
+    net
+
